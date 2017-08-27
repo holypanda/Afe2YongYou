@@ -5,6 +5,7 @@ from flask import render_template
 from flask import request
 from flask import send_file
 from algo import daily_gl
+from algo import frr_clientreport
 from algo import file_control
 import tarfile
 
@@ -39,33 +40,53 @@ def upload_excel_demo_download():
     #empty afe and yongyou
     file_control.delete_direction("afe")
     file_control.delete_direction("yongyou")
+    file_control.delete_direction("clientreport")
 
+    mode = request.form['mode']
+    if mode == 'gl':
+        currency_list = request.form['currency_list']
+        currency_list = currency_list.split(",")
+        date = request.form['date']
+        starting_ID = request.form['starting_ID']
 
-    currency_list = request.form['currency_list']
-    currency_list = currency_list.split(",")
-    date = request.form['date']
-    starting_ID = request.form['starting_ID']
+        f = request.files['excel']
 
-    f = request.files['excel']
+        print('currency List: %s, filename: %s' % (currency_list, f.filename))
 
-    print('currency List: %s, filename: %s' % (currency_list, f.filename))
+        postfix = f.filename.split('.')[-1]
 
-    postfix = f.filename.split('.')[-1]
+        file_path = os.getcwd() + '/afe/afe_gl.' + postfix
+        f.save(file_path)
 
-    file_path = os.getcwd() + '/afe/afe_gl.' + postfix
-    f.save(file_path)
+        process_gl_data = daily_gl.process_data(file_path)
 
-    process_gl_data = daily_gl.process_data(file_path)
+        for c in currency_list:
+            daily_gl.transform_data(process_gl_data, ID=starting_ID, date=date, selector=c)
 
-    for c in currency_list:
-        daily_gl.transform_data(process_gl_data, ID=starting_ID, date=date, selector=c)
+        tar_file = tarfile.open("%s/yongyou/yongyou_gl.tar.gz" % os.getcwd(), "w:gz")
+        tar_file.add("%s/yongyou" % os.getcwd(), arcname="TarName")
+        tar_file.close()
 
-    tar_file = tarfile.open("%s/yongyou/yongyou_gl.tar.gz" % os.getcwd(), "w:gz")
-    tar_file.add("%s/yongyou" % os.getcwd(), arcname="TarName")
-    tar_file.close()
+        return send_file(os.getcwd() + '/yongyou/' + 'yongyou_gl.tar.gz', as_attachment=True)
+        # return render_template('files.html')
+    elif mode == 'clientreport':
+        f = request.files['excel']
+        postfix = f.filename.split('.')[-1]
+        file_path = os.getcwd() + '/clientreport/clientreport.' + postfix
+        f.save(file_path)
+        input = file_path
+        output = os.getcwd() + '/clientreport/processed_clientreport.' + postfix
+        frr_clientreport.update_excel(input, output)
+        return send_file(os.getcwd() + '/clientreport/' + "processed_clientreport.xlsx", as_attachment=True)
 
-    return send_file(os.getcwd() + '/yongyou/' + 'yongyou_gl.tar.gz', as_attachment=True)
-    # return render_template('files.html')
+# download list
+# @app.route('/files', methods=['GET'])
+# def files_page():
+#     files = [
+#         ("abcd.jpg", "/download/abcd.jpg"),
+#         ("defg.jpg", "/download/defg.jpg")
+#     ]
+#     return render_template('files_page.html', files=files)
 
 
 @app.route('/download/<name>', methods=['GET'])
